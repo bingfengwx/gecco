@@ -3,7 +3,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.geccocrawler</groupId>
 	<artifactId>gecco</artifactId>
-	<version>1.3.1</version>
+	<version>1.3.1-cnct</version>
 
 	<name>Gecco</name>
 	<description>Easy to use lightweight web crawler</description>
@@ -126,23 +126,20 @@
 		</license>
 	</licenses>
 
-
-
-
+	<distributionManagement>
+		<snapshotRepository>
+			<id>nexus-snapshots</id>
+			<url>http://125.71.216.71:18082/nexus/content/repositories/sjt_snapshots</url>
+		</snapshotRepository>
+		<repository>
+			<id>nexus-releases</id>
+			<url>http://125.71.216.71:18082/nexus/content/repositories/sjt_release</url>
+		</repository>
+	</distributionManagement>
 
 	<profiles>
 		<profile>
 			<id>release</id>
-			<distributionManagement>
-				<snapshotRepository>
-					<id>ossrh</id>
-					<url>https://oss.sonatype.org/content/repositories/snapshots</url>
-				</snapshotRepository>
-				<repository>
-					<id>ossrh</id>
-					<url>https://oss.sonatype.org/service/local/staging/deploy/maven2</url>
-				</repository>
-			</distributionManagement>
 			<build>
 				<plugins>
 					<plugin>
