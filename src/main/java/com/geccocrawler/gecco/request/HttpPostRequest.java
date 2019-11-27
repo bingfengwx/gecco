@@ -5,12 +5,15 @@ import java.util.Map;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
+import org.apache.http.entity.ContentType;
 
 public class HttpPostRequest extends AbstractHttpRequest {
 
 	private static final long serialVersionUID = -4451221207994730839L;
 
 	private Map<String, String> fields;
+	/** json 请求post 内容 */
+	private String payload;
 	
 	public HttpPostRequest() {
 		super();
@@ -37,7 +40,18 @@ public class HttpPostRequest extends AbstractHttpRequest {
 	public String getField(String name) {
 		return fields.get(name);
 	}
-	
+
+	public String getPayload() {
+		return payload;
+	}
+
+	public void setPayload(String payload) {
+		this.payload = payload;
+	}
+
+	public void withApplicationJson() {
+		this.addHeader("Content-type", ContentType.APPLICATION_JSON.toString());
+	}
 	public static HttpPostRequest fromJson(JSONObject request) {
 		return (HttpPostRequest)JSON.toJavaObject(request, HttpPostRequest.class);
 	}

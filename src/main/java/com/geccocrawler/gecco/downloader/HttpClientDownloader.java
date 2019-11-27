@@ -1,29 +1,20 @@
 package com.geccocrawler.gecco.downloader;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.Reader;
-import java.io.UnsupportedEncodingException;
-import java.net.SocketTimeoutException;
-import java.security.cert.CertificateException;
-import java.security.cert.X509Certificate;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-
-import javax.net.ssl.SSLContext;
-
+import com.geccocrawler.gecco.downloader.proxy.Proxys;
+import com.geccocrawler.gecco.downloader.proxy.ProxysContext;
+import com.geccocrawler.gecco.request.HttpPostRequest;
+import com.geccocrawler.gecco.request.HttpRequest;
+import com.geccocrawler.gecco.response.HttpResponse;
+import com.geccocrawler.gecco.spider.SpiderThreadLocal;
+import com.geccocrawler.gecco.utils.UrlUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpHost;
 import org.apache.http.NameValuePair;
-import org.apache.http.client.HttpRequestRetryHandler;
 import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.entity.EntityBuilder;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpEntityEnclosingRequestBase;
 import org.apache.http.client.methods.HttpGet;
@@ -36,58 +27,52 @@ import org.apache.http.conn.ConnectTimeoutException;
 import org.apache.http.conn.socket.ConnectionSocketFactory;
 import org.apache.http.conn.socket.PlainConnectionSocketFactory;
 import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
+import org.apache.http.entity.ContentType;
 import org.apache.http.impl.client.BasicCookieStore;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.impl.cookie.BasicClientCookie;
 import org.apache.http.message.BasicNameValuePair;
-import org.apache.http.protocol.HttpContext;
 import org.apache.http.ssl.SSLContexts;
-import org.apache.http.ssl.TrustStrategy;
 import org.apache.http.util.CharArrayBuffer;
 
-import com.geccocrawler.gecco.downloader.proxy.Proxys;
-import com.geccocrawler.gecco.downloader.proxy.ProxysContext;
-import com.geccocrawler.gecco.request.HttpPostRequest;
-import com.geccocrawler.gecco.request.HttpRequest;
-import com.geccocrawler.gecco.response.HttpResponse;
-import com.geccocrawler.gecco.spider.SpiderThreadLocal;
-import com.geccocrawler.gecco.utils.UrlUtils;
+import javax.net.ssl.SSLContext;
+import java.io.*;
+import java.net.SocketTimeoutException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 /**
  * 利用httpclient下载
- *  
+ *
  * @author huchengyi
  *
  */
 @com.geccocrawler.gecco.annotation.Downloader("httpClientDownloader")
 public class HttpClientDownloader extends AbstractDownloader {
-	
+
 	private static Log log = LogFactory.getLog(HttpClientDownloader.class);
-	
+
 	private CloseableHttpClient httpClient;
-	
+
 	private HttpClientContext cookieContext;
-	
+
 	public HttpClientDownloader() {
-		
+
 		cookieContext = HttpClientContext.create();
 		cookieContext.setCookieStore(new BasicCookieStore());
-		
+
 		Registry<ConnectionSocketFactory> socketFactoryRegistry = null;
 		try {
 			//构造一个信任所有ssl证书的httpclient
-			SSLContext sslContext = SSLContexts.custom().loadTrustMaterial(null, new TrustStrategy() {
-				@Override
-				public boolean isTrusted(X509Certificate[] chain, String authType) throws CertificateException {
-					return true;
-				}
-			}).build();
+			SSLContext sslContext = SSLContexts.custom().loadTrustMaterial(null, (chain, authType) -> true).build();
 			SSLConnectionSocketFactory sslsf = new SSLConnectionSocketFactory(sslContext);
 			socketFactoryRegistry = RegistryBuilder.<ConnectionSocketFactory>create()
-			           .register("http", PlainConnectionSocketFactory.getSocketFactory())  
-			           .register("https", sslsf)  
+			           .register("http", PlainConnectionSocketFactory.getSocketFactory())
+			           .register("https", sslsf)
 			           .build();
 		} catch(Exception ex) {
 			socketFactoryRegistry = RegistryBuilder.<ConnectionSocketFactory>create()
@@ -102,16 +87,13 @@ public class HttpClientDownloader extends AbstractDownloader {
 		httpClient = HttpClientBuilder.create()
 				.setDefaultRequestConfig(clientConfig)
 				.setConnectionManager(syncConnectionManager)
-				.setRetryHandler(new HttpRequestRetryHandler() {
-					@Override
-					public boolean retryRequest(IOException exception, int executionCount, HttpContext context) {
-						int retryCount = SpiderThreadLocal.get().getEngine().getRetry();
-						boolean retry = (executionCount <= retryCount);
-						if(log.isDebugEnabled() && retry) {
-							log.debug("retry : " + executionCount);
-						}
-						return retry;
+				.setRetryHandler((exception, executionCount, context) -> {
+					int retryCount = SpiderThreadLocal.get().getEngine().getRetry();
+					boolean retry = (executionCount <= retryCount);
+					if(log.isDebugEnabled() && retry) {
+						log.debug("retry : " + executionCount);
 					}
+					return retry;
 				}).build();
 	}
 
@@ -120,18 +102,29 @@ public class HttpClientDownloader extends AbstractDownloader {
 		if(log.isDebugEnabled()) {
 			log.debug("downloading..." + request.getUrl());
 		}
-		HttpRequestBase reqObj = null;
+		HttpRequestBase reqObj;
 		if(request instanceof HttpPostRequest) {//post
 			HttpPostRequest post = (HttpPostRequest)request;
 			reqObj = new HttpPost(post.getUrl());
-			//post fields
-			List<NameValuePair> fields = new ArrayList<NameValuePair>();
-			for(Map.Entry<String, String> entry : post.getFields().entrySet()) {
-				NameValuePair nvp = new BasicNameValuePair(entry.getKey(), entry.getValue());
-				fields.add(nvp);
-			}
+
 			try {
-				HttpEntity entity = new UrlEncodedFormEntity(fields, "UTF-8");
+				HttpEntity entity;
+				String requestContentType = request.getHeaders().get("Content-type");
+				// application/json
+				if (requestContentType != null && requestContentType.startsWith("application/json")) {
+					entity = EntityBuilder.create()
+							.setText(post.getPayload())
+							.setContentType(ContentType.APPLICATION_JSON)
+							.build();
+				} else {
+					//post fields
+					List<NameValuePair> fields = new ArrayList<>();
+					for(Map.Entry<String, String> entry : post.getFields().entrySet()) {
+						NameValuePair nvp = new BasicNameValuePair(entry.getKey(), entry.getValue());
+						fields.add(nvp);
+					}
+					entity = new UrlEncodedFormEntity(fields, "UTF-8");
+				}
 				((HttpEntityEnclosingRequestBase) reqObj).setEntity(entity);
 			} catch (UnsupportedEncodingException e) {
 				e.printStackTrace();
@@ -189,7 +182,7 @@ public class HttpClientDownloader extends AbstractDownloader {
 					contentType = contentTypeHeader.getValue();
 				}
 				resp.setContentType(contentType);
-				if(!isImage(contentType)) { 
+				if(!isImage(contentType)) {
 					String charset = request.isForceUseCharset() ? request.getCharset():getCharset(request.getCharset(), contentType);
 					resp.setCharset(charset);
 					//String content = EntityUtils.toString(responseEntity, charset);
@@ -221,7 +214,7 @@ public class HttpClientDownloader extends AbstractDownloader {
 			reqObj.releaseConnection();
 		}
 	}
-	
+
 	@Override
 	public void shutdown() {
 		try {
@@ -230,8 +223,8 @@ public class HttpClientDownloader extends AbstractDownloader {
 			httpClient = null;
 		}
 	}
-	
-	public String getContent(InputStream instream, long contentLength, String charset) throws IOException {
+
+	private String getContent(InputStream instream, long contentLength, String charset) throws IOException {
 		try {
 			if (instream == null) {
 	            return null;
@@ -251,16 +244,13 @@ public class HttpClientDownloader extends AbstractDownloader {
 		} finally {
 			Objects.requireNonNull(instream).reset();
 		}
-        
+
     }
-	
+
 	private boolean isImage(String contentType) {
 		if(contentType == null) {
 			return false;
 		}
-		if(contentType.toLowerCase().startsWith("image")) {
-			return true;
-		}
-		return false;
+		return contentType.toLowerCase().startsWith("image");
 	}
 }
