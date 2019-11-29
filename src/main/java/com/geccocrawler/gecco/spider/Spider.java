@@ -1,23 +1,18 @@
 package com.geccocrawler.gecco.spider;
 
-import java.util.List;
-import java.util.concurrent.CountDownLatch;
-
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-
 import com.geccocrawler.gecco.GeccoEngine;
-import com.geccocrawler.gecco.downloader.AfterDownload;
-import com.geccocrawler.gecco.downloader.BeforeDownload;
-import com.geccocrawler.gecco.downloader.Downloader;
-import com.geccocrawler.gecco.downloader.DownloadException;
-import com.geccocrawler.gecco.downloader.DownloadTimeoutException;
+import com.geccocrawler.gecco.downloader.*;
 import com.geccocrawler.gecco.pipeline.Pipeline;
 import com.geccocrawler.gecco.request.HttpRequest;
 import com.geccocrawler.gecco.response.HttpResponse;
 import com.geccocrawler.gecco.scheduler.Scheduler;
 import com.geccocrawler.gecco.scheduler.UniqueSpiderScheduler;
 import com.geccocrawler.gecco.spider.render.Render;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
 
 /**
  * 一个爬虫引擎可以包含多个爬虫，每个爬虫可以认为是一个单独线程，爬虫会从Scheduler中获取需要待抓取的请求。
@@ -200,9 +195,11 @@ public class Spider implements Runnable {
 	}
 	
 	private HttpResponse download(SpiderBeanContext context, HttpRequest request) throws DownloadException {
-			Downloader currDownloader = null;
+			Downloader currDownloader;
 			BeforeDownload before = null;
 			AfterDownload after = null;
+			BeforeDownload globalBefore = engine.getGlobalBeforeDownload();
+			AfterDownload globalAfter = engine.getGlobalAfterDownload();
 			int timeout = 1000;
 			if(context != null) {
 				currDownloader = context.getDownloader();
@@ -212,10 +209,16 @@ public class Spider implements Runnable {
 			} else {
 				currDownloader = engine.getSpiderBeanFactory().getDownloaderFactory().defaultDownloader();
 			}
+			if (globalBefore != null) {
+				globalBefore.process(request);
+			}
 			if(before != null) {
 				before.process(request);
 			}
 			HttpResponse response = currDownloader.download(request, timeout);
+			if (globalAfter != null) {
+				globalAfter.process(request, response);
+			}
 			if(after != null) {
 				after.process(request, response);
 			}

@@ -1,23 +1,8 @@
 package com.geccocrawler.gecco;
 
-import java.io.File;
-import java.io.IOException;
-import java.net.URL;
-import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
-
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.apache.log4j.Level;
-import org.apache.log4j.LogManager;
-import org.apache.log4j.Logger;
-
 import com.alibaba.fastjson.JSON;
+import com.geccocrawler.gecco.downloader.AfterDownload;
+import com.geccocrawler.gecco.downloader.BeforeDownload;
 import com.geccocrawler.gecco.downloader.proxy.FileProxys;
 import com.geccocrawler.gecco.downloader.proxy.Proxys;
 import com.geccocrawler.gecco.dynamic.DynamicGecco;
@@ -36,6 +21,22 @@ import com.geccocrawler.gecco.spider.Spider;
 import com.geccocrawler.gecco.spider.SpiderBeanFactory;
 import com.google.common.io.Files;
 import com.google.common.io.Resources;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.log4j.Level;
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
+
+import java.io.File;
+import java.io.IOException;
+import java.net.URL;
+import java.nio.charset.Charset;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 
 /**
  * 爬虫引擎，每个爬虫引擎最好独立进程，在分布式爬虫场景下，可以单独分配一台爬虫服务器。引擎包括Scheduler、Downloader、Spider、 SpiderBeanFactory4个主要模块
@@ -86,6 +87,10 @@ public class GeccoEngine<V> extends Thread implements Callable<V> {
 	private String jmxPrefix;
 
 	private V ret;//callable 返回值
+	/** 全局 请求前置处理 */
+	private BeforeDownload globalBeforeDownload;
+	/** 全局 请求后置处理 */
+	private AfterDownload globalAfterDownload;
 
 	public V getRet() {
 		return ret;
@@ -93,6 +98,14 @@ public class GeccoEngine<V> extends Thread implements Callable<V> {
 
 	public void setRet(V ret) {
 		this.ret = ret;
+	}
+
+	public BeforeDownload getGlobalBeforeDownload() {
+		return this.globalBeforeDownload;
+	}
+
+	public AfterDownload getGlobalAfterDownload() {
+		return this.globalAfterDownload;
 	}
 
 	private GeccoEngine() {
@@ -214,6 +227,16 @@ public class GeccoEngine<V> extends Thread implements Callable<V> {
 
 	public GeccoEngine spiderBeanFactory(SpiderBeanFactory spiderBeanFactory) {
 		this.spiderBeanFactory = spiderBeanFactory;
+		return this;
+	}
+
+	public GeccoEngine globalBeforeDownload(BeforeDownload beforeDownload) {
+		this.globalBeforeDownload = beforeDownload;
+		return this;
+	}
+
+	public GeccoEngine globalAfterDownload(AfterDownload afterDownload) {
+		this.globalAfterDownload = afterDownload;
 		return this;
 	}
 
